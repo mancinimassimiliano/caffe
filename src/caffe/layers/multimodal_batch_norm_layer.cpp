@@ -26,7 +26,7 @@ void MultiModalBatchNormLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bot
   if (this->blobs_.size() > 0) {
     LOG(INFO) << "Skipping parameter initialization";
   } else {
-    this->blobs_.resize(5);
+    this->blobs_.resize(3);
 
     vector<int> sz;
     sz.push_back(channels_);
@@ -230,15 +230,16 @@ void MultiModalBatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
   // X_norm = (X-EX) * inv_var
   multicast_cpu(N, C, S, inv_variance_.cpu_data(), temp_.mutable_cpu_data()); // repeat std
   caffe_mul(top_size, top_data, temp_.cpu_data(), top_data); // (X-E[X])/std 
+  // copy x_norm for backward
+  caffe_copy(top_size, top_data, x_norm_.mutable_cpu_data());
 
   weights_multicast_cpu(N,C,S,weights,temp_.mutable_cpu_data());
 
   caffe_mul(top_size, top_data, temp_.cpu_data(), top_data); // (X-E[X])/std * w
 
 
-  // copy x_norm for backward
-  caffe_copy(top_size, top_data, x_norm_.mutable_cpu_data());
   
+
 
 }
 
@@ -250,12 +251,67 @@ void MultiModalBatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& t
     const vector<bool>& propagate_down,
     const vector<Blob<Dtype>*>& bottom){
 
-  if (propagate_down[0]) {
-  	caffe_set(bottom[0]->count(), Dtype(0),
-       	bottom[0]->mutable_cpu_diff());
-  } 
+  int N = bottom[0]->shape(0);
+  int C = channels_;
+  int S = bottom[0]->count(0) / (N*C);
+  int top_size = top[0]->count();
+  const Dtype* weights = bottom[1]->cpu_data();
+  const Dtype* top_diff = top[0]->cpu_diff();
+
+  // --  STAGE 1: backprop dE/d(x_norm) = dE/dY .* w ------------
+  weights_multicast_cpu(N, C, S, weights, temp_.mutable_cpu_data());
+  caffe_mul(top_size, top_diff, temp_.cpu_data(), x_norm_.mutable_cpu_diff());
+
+  // --  STAGE : backprop dE/dY --> dE/dX --------------------------
+
+  // ATTENTION: from now on we will use notation Y:= X_norm
+  // if Y = (X-mean(X))/(sqrt(var(X)+eps)), then
+  //
+  // dE(Y)/dX =  (dE/dY - w*sum(dE/dY)/sum(w) - w*sum(dE/dY .* Y) .* Y)/sum(w)
+  //             ./ sqrt(var(X) + eps)
+  // where
+  // .* and ./ are element-wise product and division,
+  // mean, var, sum are computed along all dimensions except the channels.
+
+  const Dtype* top_data = x_norm_.cpu_data();
+  top_diff = x_norm_.cpu_diff();
+  Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
+
+  // temp = sum(dE/dY .* Y)
+  caffe_mul(top_size, top_diff, top_data, temp_.mutable_cpu_diff());
+  compute_sum_per_channel_cpu(N, C, S, temp_.cpu_diff(),
+      temp_C_.mutable_cpu_diff());
+  multicast_cpu(N, C, S, temp_C_.cpu_diff(), temp_.mutable_cpu_diff());
+
+  // bottom = sum(dE/dY .* Y) .* Y
+  caffe_mul(top_size, temp_.cpu_diff(), top_data, bottom_diff);
+
+  // temp = sum(dE/dY)
+  compute_sum_per_channel_cpu(N, C, S, top_diff, temp_C_.mutable_cpu_diff());
+  multicast_cpu(N, C, S, temp_C_.cpu_diff(), temp_.mutable_cpu_diff());
+
+  // bottom = (sum(dE/dY) + sum(dE/dY .* Y) .* Y)*w
+  caffe_add(top_size, temp_.cpu_diff(), bottom_diff, bottom_diff);
+
+  weights_multicast_cpu(N, C, S, weights, temp_.mutable_cpu_data());
+  compute_sum_per_channel_cpu(N,C,S,temp_.cpu_data(),temp_C_.mutable_cpu_data()); 
+  caffe_powx(C, temp_C_.cpu_data(), Dtype(-1.0),
+      temp_C_.mutable_cpu_data()); // std = (var+eps)^(-0.5)
+
+  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff); 		//diff*w
+  multicast_cpu(N, C, S, temp_C_.cpu_data(), temp_.mutable_cpu_data());         
+  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff);		//diff*(1/w)
+
+  // bottom = dE/dY - (sum(dE/dY)-msum(dE/dY \cdot Y) \cdot Y)*w/sum(w)
+  caffe_cpu_axpby(top_size, Dtype(1.), top_diff, Dtype(-1.), bottom_diff);
+
+  // dE/dX = dE/dX ./ sqrt(var(X) + eps)
+  multicast_cpu(N, C, S, inv_variance_.cpu_data(), temp_.mutable_cpu_data());
+  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff); 
+
+
   if (propagate_down[1]) {
-  	caffe_set(bottom[1]->count(), Dtype(0),
+  	caffe_set(bottom[1]->count(), Dtype(1),
        	bottom[1]->mutable_cpu_diff());
   } 
   
