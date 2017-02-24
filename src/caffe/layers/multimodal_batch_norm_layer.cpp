@@ -30,25 +30,17 @@ void MultiModalBatchNormLayer<Dtype>::LayerSetUp(const vector<Blob<Dtype>*>& bot
 
     vector<int> sz;
     sz.push_back(channels_);
-    this->blobs_[0].reset(new Blob<Dtype>(sz));  // scale blobs_[0]
-    this->blobs_[1].reset(new Blob<Dtype>(sz));  // bias blobs_[1]
-    this->blobs_[2].reset(new Blob<Dtype>(sz));  // mean blobs_[2]
-    this->blobs_[3].reset(new Blob<Dtype>(sz));  // variance blobs_[3]
+    this->blobs_[0].reset(new Blob<Dtype>(sz));  // mean blobs_[0]
+    this->blobs_[1].reset(new Blob<Dtype>(sz));  // variance blobs_[1]
 
-    shared_ptr<Filler<Dtype> > scale_filler(
-      GetFiller<Dtype>(this->layer_param_.multimodal_batch_norm_param().scale_filler()));
-    scale_filler->Fill(this->blobs_[0].get());	// Filler della scala
-    shared_ptr<Filler<Dtype> > bias_filler(
-      GetFiller<Dtype>(this->layer_param_.multimodal_batch_norm_param().bias_filler()));
-    bias_filler->Fill(this->blobs_[1].get()); // Filler del bias
 
-    caffe_set(this->blobs_[2]->count(), Dtype(0.),
-        this->blobs_[2]->mutable_cpu_data());
-    caffe_set(this->blobs_[3]->count(), Dtype(0.),
-        this->blobs_[3]->mutable_cpu_data());
+    caffe_set(this->blobs_[0]->count(), Dtype(0.),
+        this->blobs_[0]->mutable_cpu_data());
+    caffe_set(this->blobs_[1]->count(), Dtype(0.),
+        this->blobs_[1]->mutable_cpu_data());
 
     sz[0]=1;
-    this->blobs_[4].reset(new Blob<Dtype>(sz));
+    this->blobs_[2].reset(new Blob<Dtype>(sz));
     iter_ = 0;
   }
 }
@@ -177,8 +169,8 @@ void MultiModalBatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
   
   if (use_global_stats_) {
     // use global mean/variance
-    caffe_copy(C, this->blobs_[2]->cpu_data(), mean_.mutable_cpu_data());
-    caffe_copy(C, this->blobs_[3]->cpu_data(), variance_.mutable_cpu_data());
+    caffe_copy(C, this->blobs_[0]->cpu_data(), mean_.mutable_cpu_data());
+    caffe_copy(C, this->blobs_[1]->cpu_data(), variance_.mutable_cpu_data());
   } else {
     compute_mean_per_channel_cpu(N, C, S, bottom_data, weights, 
         mean_.mutable_cpu_data()); //E[X]
@@ -203,30 +195,30 @@ void MultiModalBatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
     if (iter_ > MULTIMODAL_BN_VARIANCE_CLIP_START) {
       // clip from above
       // temp_C_[c] = average_var + gobal_var[c]
-      Dtype y = caffe_cpu_asum(C, this->blobs_[3]->cpu_data());
+      Dtype y = caffe_cpu_asum(C, this->blobs_[1]->cpu_data());
       caffe_cpu_scale(C, Dtype(y/C), ones_C_.cpu_data(),
           temp_C_.mutable_cpu_data());
-      caffe_cpu_axpby(C, Dtype(1.0), this->blobs_[3]->cpu_data(),
+      caffe_cpu_axpby(C, Dtype(1.0), this->blobs_[1]->cpu_data(),
           Dtype(1.0), temp_C_.mutable_cpu_data());
       caffe_cpu_eltwise_min(C,
           Dtype(MULTIMODAL_BN_VARIANCE_CLIP_CONST), temp_C_.cpu_data(),
           Dtype(1.0), variance_.mutable_cpu_data());
       // clip from below
       caffe_cpu_eltwise_max(C,
-          Dtype((1.)/MULTIMODAL_BN_VARIANCE_CLIP_CONST), this->blobs_[3]->cpu_data(),
+          Dtype((1.)/MULTIMODAL_BN_VARIANCE_CLIP_CONST), this->blobs_[1]->cpu_data(),
           Dtype(1.0), variance_.mutable_cpu_data());
     }
     //  update global mean and variance
     if (iter_ > 1) {
       caffe_cpu_axpby(C,
           Dtype(1. - moving_average_fraction_), mean_.cpu_data(),
-          Dtype(moving_average_fraction_), this->blobs_[2]->mutable_cpu_data());
+          Dtype(moving_average_fraction_), this->blobs_[0]->mutable_cpu_data());
       caffe_cpu_axpby(C,
           Dtype(1.- moving_average_fraction_), variance_.cpu_data(),
-          Dtype(moving_average_fraction_), this->blobs_[3]->mutable_cpu_data());
+          Dtype(moving_average_fraction_), this->blobs_[1]->mutable_cpu_data());
     } else {
-      caffe_copy(C, mean_.cpu_data(), this->blobs_[2]->mutable_cpu_data());
-      caffe_copy(C, variance_.cpu_data(), this->blobs_[3]->mutable_cpu_data());
+      caffe_copy(C, mean_.cpu_data(), this->blobs_[0]->mutable_cpu_data());
+      caffe_copy(C, variance_.cpu_data(), this->blobs_[1]->mutable_cpu_data());
     }
   }
 
@@ -247,16 +239,6 @@ void MultiModalBatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
   // copy x_norm for backward
   caffe_copy(top_size, top_data, x_norm_.mutable_cpu_data());
   
-  // -- STAGE 2:  Y = X_norm * scale[c] + shift[c]  -----------------
-  // Y = X_norm * scale[c]
-  const Blob<Dtype> & scale_data = *(this->blobs_[0]);
-  multicast_cpu(N, C, S, scale_data.cpu_data(), temp_.mutable_cpu_data()); // repeat gamma
-  caffe_mul(top_size, top_data, temp_.cpu_data(), top_data); // X_norm * gamma
-  // Y = Y + shift[c]
-  const Blob<Dtype> & shift_data = *(this->blobs_[1]);
-  multicast_cpu(N, C, S, shift_data.cpu_data(), temp_.mutable_cpu_data());	// repeat beta
- 
-  caffe_add(top_size, top_data, temp_.mutable_cpu_data(), top_data);		// + bias
 
 }
 
@@ -267,13 +249,16 @@ template <typename Dtype>
 void MultiModalBatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
     const vector<bool>& propagate_down,
     const vector<Blob<Dtype>*>& bottom){
-	//TODO   now just a placeholder
-	for (int i = 0; i < bottom.size(); ++i) {
-    		if (propagate_down[i]) {
-      			caffe_set(bottom[i]->count(), Dtype(0),
-                	bottom[i]->mutable_cpu_diff());
-		} 
-	}
+
+  if (propagate_down[0]) {
+  	caffe_set(bottom[0]->count(), Dtype(0),
+       	bottom[0]->mutable_cpu_diff());
+  } 
+  if (propagate_down[1]) {
+  	caffe_set(bottom[1]->count(), Dtype(0),
+       	bottom[1]->mutable_cpu_diff());
+  } 
+  
 }
 
 #ifdef CPU_ONLY

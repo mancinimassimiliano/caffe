@@ -87,8 +87,8 @@ void MultiModalBatchNormLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bo
 
   if (use_global_stats_) {
     // use global mean/variance
-    caffe_copy(C, this->blobs_[2]->gpu_data(), mean_.mutable_gpu_data());
-    caffe_copy(C, this->blobs_[3]->gpu_data(), variance_.mutable_gpu_data());
+    caffe_copy(C, this->blobs_[0]->gpu_data(), mean_.mutable_gpu_data());
+    caffe_copy(C, this->blobs_[1]->gpu_data(), variance_.mutable_gpu_data());
   } else {
     compute_mean_per_channel_gpu(N, C, S, bottom_data, weights,
         mean_.mutable_gpu_data());
@@ -120,30 +120,30 @@ void MultiModalBatchNormLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bo
       // clip from above
       // temp_C_[c] = average + gobal_var[c]
       Dtype y;
-      caffe_gpu_asum(C, this->blobs_[3]->gpu_data(), &y);
+      caffe_gpu_asum(C, this->blobs_[1]->gpu_data(), &y);
       caffe_gpu_scale(C, Dtype(y/C), ones_C_.gpu_data(),
           temp_C_.mutable_gpu_data());
-      caffe_gpu_axpby(C, Dtype(1.0), this->blobs_[3]->gpu_data(),
+      caffe_gpu_axpby(C, Dtype(1.0), this->blobs_[1]->gpu_data(),
           Dtype(1.0), temp_C_.mutable_gpu_data());
       caffe_gpu_eltwise_min(C,
           Dtype(MULTIMODAL_BN_VARIANCE_CLIP_CONST), temp_C_.gpu_data(),
           Dtype(1.0), variance_.mutable_gpu_data());
       // clip from below
       caffe_gpu_eltwise_max(C,
-          Dtype((1.)/MULTIMODAL_BN_VARIANCE_CLIP_CONST), this->blobs_[3]->gpu_data(),
+          Dtype((1.)/MULTIMODAL_BN_VARIANCE_CLIP_CONST), this->blobs_[1]->gpu_data(),
           Dtype(1.0), variance_.mutable_gpu_data());
     }
     //  update global mean and variance
     if (iter_ > 1) {
       caffe_gpu_axpby(C,
         Dtype(1. - moving_average_fraction_), mean_.gpu_data(),
-        Dtype(moving_average_fraction_), this->blobs_[2]->mutable_gpu_data());
+        Dtype(moving_average_fraction_), this->blobs_[0]->mutable_gpu_data());
       caffe_gpu_axpby(C,
         Dtype((1.- moving_average_fraction_)), variance_.gpu_data(),
-        Dtype(moving_average_fraction_), this->blobs_[3]->mutable_gpu_data());
+        Dtype(moving_average_fraction_), this->blobs_[1]->mutable_gpu_data());
     } else {
-      caffe_copy(C, mean_.gpu_data(), this->blobs_[2]->mutable_gpu_data());
-      caffe_copy(C, variance_.gpu_data(), this->blobs_[3]->mutable_gpu_data());
+      caffe_copy(C, mean_.gpu_data(), this->blobs_[0]->mutable_gpu_data());
+      caffe_copy(C, variance_.gpu_data(), this->blobs_[1]->mutable_gpu_data());
     }
   }
   //  inv_var = (eps + variance)^(-0.5)
@@ -162,17 +162,7 @@ void MultiModalBatchNormLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bo
   // copy x_norm for backward
   caffe_copy(top_size, top_data, x_norm_.mutable_gpu_data());
 
-  //  -- STAGE 2:  Y = X_norm * scale[c] + shift[c]  -----------------
-
-  //  Y = X_norm * scale[c]
- const Blob<Dtype> & scale_data = *(this->blobs_[0]);
-  multicast_gpu(N, C, S, scale_data.gpu_data(), temp_.mutable_gpu_data());
-  caffe_gpu_mul(top_size, top_data, temp_.gpu_data(), top_data);
-
-  //  Y = Y + shift[c]
-  const Blob<Dtype> & shift_data = *(this->blobs_[1]);
-  multicast_gpu(N, C, S, shift_data.gpu_data(), temp_.mutable_gpu_data());
-  caffe_gpu_add(top_size, top_data, temp_.mutable_gpu_data(), top_data);
+  
 
 }
 

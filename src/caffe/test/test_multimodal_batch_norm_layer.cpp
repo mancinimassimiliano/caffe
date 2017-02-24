@@ -57,16 +57,11 @@ protected:
   TYPED_TEST(MultiModalBatchNormLayerTest, TestForward) {
     typedef typename TypeParam::Dtype Dtype;
     LayerParameter layer_param;
-
+    Dtype eps = 0.0;
     MultiModalBatchNormParameter* mmbn_param = layer_param.mutable_multimodal_batch_norm_param();
-    FillerParameter *scale_param = mmbn_param->mutable_scale_filler();
-    scale_param->set_value(Dtype(1.0));
-    FillerParameter *bias_param = mmbn_param->mutable_bias_filler();
-    bias_param->set_value(Dtype(0.0));
-
-    mmbn_param->set_eps(0.2);
+    mmbn_param->set_eps(eps);
     
-    Dtype eps = 0.2;
+    
      const Dtype kErrorBound = 0.001;
     
     MultiModalBatchNormLayer<Dtype> layer(layer_param);
