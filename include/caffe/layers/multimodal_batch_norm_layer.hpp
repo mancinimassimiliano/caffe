@@ -72,6 +72,8 @@ class MultiModalBatchNormLayer : public Layer<Dtype> {
   virtual void weights_multicast_cpu(int N, int C, int S, const Dtype* x, Dtype* y);
   virtual void compute_sum_per_channel_cpu(int N, int C, int S,
       const Dtype* x, Dtype* y);
+  virtual void compute_sum_per_sample_cpu(int N, int C, int S,
+      const Dtype* x, Dtype* y);
   virtual void compute_mean_per_channel_cpu(int N, int C, int S,
       const Dtype* x,  const Dtype* w, Dtype* y);
 
@@ -82,6 +84,8 @@ class MultiModalBatchNormLayer : public Layer<Dtype> {
   virtual void compute_mean_per_channel_gpu(int N, int C, int S,
       const Dtype* x, const Dtype* w, Dtype* y);
   virtual void weights_multicast_gpu(int N, int C, int S, const Dtype* x, Dtype* y);
+  virtual void compute_sum_per_sample_gpu(int N, int C, int S,
+      const Dtype* x, Dtype* y);
 #endif
 
   Blob<Dtype> mean_, variance_, inv_variance_, x_norm_;
@@ -94,8 +98,9 @@ class MultiModalBatchNormLayer : public Layer<Dtype> {
   Blob<Dtype> ones_N_, ones_HW_, ones_C_;
   Blob<Dtype> temp_;
   Blob<Dtype> temp_C_;
+  Blob<Dtype> temp_N_;
+  Blob<Dtype> temp2_;
   Blob<Dtype> temp_NC_;
-
 };
 
 }  // namespace caffe

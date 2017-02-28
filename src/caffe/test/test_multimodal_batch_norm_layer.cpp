@@ -13,8 +13,8 @@
 #include "caffe/test/test_caffe_main.hpp"
 #include "caffe/test/test_gradient_check_util.hpp"
 
-#define BATCH_SIZE 20
-#define INPUT_DATA_SIZE 16
+#define BATCH_SIZE 3
+#define INPUT_DATA_SIZE 2
 
 namespace caffe {
 
@@ -23,8 +23,8 @@ namespace caffe {
 typedef typename TypeParam::Dtype Dtype;
 protected:
   MultiModalBatchNormLayerTest()
-      : blob_bottom_a_(new Blob<Dtype>(20, 16, 10, 10)),
-        blob_bottom_b_(new Blob<Dtype>(20, 1,1,1)),
+      : blob_bottom_a_(new Blob<Dtype>(3, 2, 4, 4)),
+        blob_bottom_b_(new Blob<Dtype>(3, 1,1,1)),
         blob_top_(new Blob<Dtype>()) {
     // fill the values
     
@@ -126,9 +126,7 @@ protected:
      // EXPECT_NEAR(0, sum, kErrorBound);
       // expect unit variance
       //EXPECT_NEAR(1, var, kErrorBound);
-    
-    
-            
+                
 	}
   }
   

@@ -66,6 +66,7 @@ void MultiModalBatchNormLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom
   sz[0] = N;
   ones_N_.Reshape(sz);
   caffe_set(ones_N_.count(), Dtype(1.), ones_N_.mutable_cpu_data());
+  temp_N_.Reshape(sz);
   sz[0] = channels_;
   ones_C_.Reshape(sz);
   caffe_set(ones_C_.count(), Dtype(1.), ones_C_.mutable_cpu_data());
@@ -77,6 +78,7 @@ void MultiModalBatchNormLayer<Dtype>::Reshape(const vector<Blob<Dtype>*>& bottom
   temp_NC_.Reshape(sz);
 
   temp_.ReshapeLike(*bottom[0]);
+  temp2_.ReshapeLike(*bottom[0]);
   x_norm_.ReshapeLike(*bottom[0]);
 }
 
@@ -155,6 +157,23 @@ void MultiModalBatchNormLayer<Dtype>::compute_mean_per_channel_cpu(int N, int C,
 
 }
 
+//  y[c] = sum x(.,c,...)
+template <typename Dtype>
+void MultiModalBatchNormLayer<Dtype>::compute_sum_per_sample_cpu(int N, int C, int S,
+    const Dtype *x, Dtype *y ) {
+
+  Blob<Dtype> templ_NC;
+  vector<int> templ_size;
+  templ_size.push_back(N*C);
+  templ_NC.Reshape(templ_size);
+  caffe_cpu_gemv<Dtype>(CblasNoTrans, N * C, S, 1., x, ones_HW_.cpu_data(),
+      0., templ_NC.mutable_cpu_data());		// C= alpha*A*B+beta*C .... temp_NC=1*x*ones_HW + 0 * temp_NC -> sum over HW
+  caffe_cpu_gemv<Dtype>(CblasNoTrans, N, C, 1., templ_NC.cpu_data(),
+      ones_C_.cpu_data(), 0., y);		// C= alpha*A*B+beta*C .... y=1*temp_NC.T*ones_N + 0 * y -> sum over C
+	
+	// result equal array y with dim N where each row is the sample sum
+}
+
 template <typename Dtype>
 void MultiModalBatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
     const vector<Blob<Dtype>*>& top) {
@@ -227,9 +246,11 @@ void MultiModalBatchNormLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bo
   
   caffe_powx(C, variance_.cpu_data(), Dtype(-0.5),
       inv_variance_.mutable_cpu_data()); // std = (var+eps)^(-0.5)
+
   // X_norm = (X-EX) * inv_var
   multicast_cpu(N, C, S, inv_variance_.cpu_data(), temp_.mutable_cpu_data()); // repeat std
   caffe_mul(top_size, top_data, temp_.cpu_data(), top_data); // (X-E[X])/std 
+
   // copy x_norm for backward
   caffe_copy(top_size, top_data, x_norm_.mutable_cpu_data());
 
@@ -257,12 +278,13 @@ void MultiModalBatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& t
   int top_size = top[0]->count();
   const Dtype* weights = bottom[1]->cpu_data();
   const Dtype* top_diff = top[0]->cpu_diff();
+  Dtype* weights_diff = bottom[1]->mutable_cpu_diff();
 
   // --  STAGE 1: backprop dE/d(x_norm) = dE/dY .* w ------------
   weights_multicast_cpu(N, C, S, weights, temp_.mutable_cpu_data());
   caffe_mul(top_size, top_diff, temp_.cpu_data(), x_norm_.mutable_cpu_diff());
-
-  // --  STAGE : backprop dE/dY --> dE/dX --------------------------
+  
+  // --  STAGE 2: backprop dE/dY --> dE/dX --------------------------
 
   // ATTENTION: from now on we will use notation Y:= X_norm
   // if Y = (X-mean(X))/(sqrt(var(X)+eps)), then
@@ -274,9 +296,12 @@ void MultiModalBatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& t
   // mean, var, sum are computed along all dimensions except the channels.
 
   const Dtype* top_data = x_norm_.cpu_data();
+
+ 
+
   top_diff = x_norm_.cpu_diff();
   Dtype* bottom_diff = bottom[0]->mutable_cpu_diff();
-
+  
   // temp = sum(dE/dY .* Y)
   caffe_mul(top_size, top_diff, top_data, temp_.mutable_cpu_diff());
   compute_sum_per_channel_cpu(N, C, S, temp_.cpu_diff(),
@@ -293,27 +318,64 @@ void MultiModalBatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& t
   // bottom = (sum(dE/dY) + sum(dE/dY .* Y) .* Y)*w
   caffe_add(top_size, temp_.cpu_diff(), bottom_diff, bottom_diff);
 
-  weights_multicast_cpu(N, C, S, weights, temp_.mutable_cpu_data());
-  compute_sum_per_channel_cpu(N,C,S,temp_.cpu_data(),temp_C_.mutable_cpu_data()); 
-  caffe_powx(C, temp_C_.cpu_data(), Dtype(-1.0),
-      temp_C_.mutable_cpu_data()); // std = (var+eps)^(-0.5)
+  weights_multicast_cpu(N, C, S, weights, temp_.mutable_cpu_data());		
+  compute_sum_per_channel_cpu(N,C,S,temp_.cpu_data(),temp_C_.mutable_cpu_data());	//sw 
+  caffe_powx(C, temp_C_.cpu_data(), Dtype(-1.0), temp_C_.mutable_cpu_data()); 		//(1/sw)
 
-  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff); 		//diff*w
+  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff); 			//diff*w
   multicast_cpu(N, C, S, temp_C_.cpu_data(), temp_.mutable_cpu_data());         
-  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff);		//diff*(1/w)
+  caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff);			//diff*(1/sw)
 
-  // bottom = dE/dY - (sum(dE/dY)-msum(dE/dY \cdot Y) \cdot Y)*w/sum(w)
+  // bottom = dE/dY - (sum(dE/dY)-sum(dE/dY \cdot Y) \cdot Y)*w/sum(w)
   caffe_cpu_axpby(top_size, Dtype(1.), top_diff, Dtype(-1.), bottom_diff);
 
   // dE/dX = dE/dX ./ sqrt(var(X) + eps)
   multicast_cpu(N, C, S, inv_variance_.cpu_data(), temp_.mutable_cpu_data());
   caffe_mul(top_size, bottom_diff, temp_.cpu_data(), bottom_diff); 
 
+ 
 
-  if (propagate_down[1]) {
-  	caffe_set(bottom[1]->count(), Dtype(1),
-       	bottom[1]->mutable_cpu_diff());
-  } 
+  // STAGE 3 Propagate error to weights
+  //
+  // We will compute (considering this mode as M):
+  // dE/dw = dE/dM * Y -Y/sw.*sum(dE/dY) + 1/(2*sw).*(1-Y^2).*sum(dE/dY.*Y)
+  //
+ 
+   // 1
+  caffe_mul(top_size, top[0]->cpu_diff(), top_data, temp_.mutable_cpu_diff());
+  compute_sum_per_sample_cpu(N, C, S, temp_.cpu_diff(), weights_diff);
+
+  // temp = mean(dE/dY .* Y)
+  caffe_mul(top_size, top_diff, top_data, temp_.mutable_cpu_diff()); 				// dE/dY .* Y
+  compute_sum_per_channel_cpu(N, C, S, temp_.cpu_diff(), temp_C_.mutable_cpu_diff());   	// sum(dE/dY .* Y)
+  multicast_cpu(N, C, S, temp_C_.cpu_diff(), temp_.mutable_cpu_diff());				// sum repeated
+
+  // bottom_w = -0.5*sum(dE/dY .* Y) .* Y^2
+
+  caffe_mul(top_size, top_data, top_data, temp2_.mutable_cpu_diff());				// Y^2
+  caffe_add_scalar(top_size, Dtype(-1.0), temp2_.mutable_cpu_diff());				// -(1-Y^2)
+  caffe_mul(top_size, temp_.cpu_diff(), temp2_.cpu_diff(), temp2_.mutable_cpu_diff());		// temp2 = -(1-Y^2).*sum(dE/dY.*Y)
+
+  
+
+  compute_sum_per_channel_cpu(N, C, S, top_diff, temp_C_.mutable_cpu_diff()); 			// temp = sum(dE/dY)
+  multicast_cpu(N, C, S, temp_C_.cpu_diff(), temp_.mutable_cpu_diff());				// Repeated
+  
+
+  caffe_mul(top_size, temp_.cpu_diff(), top_data, temp_.mutable_cpu_diff());			// temp = Y.*sum(dE/dY)
+  caffe_cpu_axpby(top_size, Dtype(-1.), temp_.cpu_diff(), Dtype(-0.5), temp2_.mutable_cpu_diff()); // -Y/sw.*sum(dE/dY) + 1/(2*sw).*(1-Y^2).*sum(dE/dY.*Y)
+
+  const Dtype sw = (caffe_cpu_asum(N,weights)*Dtype(S));
+  caffe_cpu_scale(top_size, Dtype(1.)/sw, temp2_.cpu_diff(), temp2_.mutable_cpu_diff());	//diff*(1/sw)
+
+  compute_sum_per_sample_cpu(N, C, S, temp2_.cpu_diff(), temp_N_.mutable_cpu_diff());
+  caffe_add(N, temp_N_.cpu_diff(), weights_diff, weights_diff);
+  int i=1;
+if (propagate_down[i]) {
+      caffe_set(bottom[i]->count(), Dtype(0),
+                bottom[i]->mutable_cpu_diff());
+    }
+  
   
 }
 
