@@ -1,0 +1,145 @@
+CORE MODULE
+
+layer {
+    bottom: "bottom"
+    bottom: "weights"
+    name: "mmbn1"
+    top: "mmbn1"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "bottom"
+    bottom: "1-weights"
+    name: "mmbn2"
+    top: "mmbn2"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "mmbn1"
+  bottom: "mmbn2"
+  top: "mmbn"
+  eltwise_param { operation: SUM }
+}
+layer {
+    bottom: "mmbn"
+    top: "mmbn"
+    name: "scale_mmbn"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 1.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+
+
+
+
+
+WEIGHTS_GENERATION
+
+layer {
+  name: "weights_bottom_1x1"
+  type: "Convolution"
+  bottom: "bottom"
+  top: "weights_bottom_1x1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 1
+    kernel_size: 1
+    stride: 1
+    weight_filler {
+      type: "gaussian"
+      std: 0.01
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "weights_bottom_1x1"
+    top: "weights_bottom_scale"
+    name: "weights_bottom_scale"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 1.0    
+        }
+        bias_filler {
+          value: 0.5
+        }
+    }
+    param {
+          lr_mult: 0
+	  decay_mult: 0
+    }
+    param {
+          lr_mult: 0
+	  decay_mult: 0
+    }
+}
+
+layer {
+  name: "weights_bottom_softmax"
+  type: "Softmax"
+  bottom: "weights_bottom_scale"
+  top: "weights_bottom_softmax"
+  include { stage: "deploy" }
+}
+layer {
+  name: "weights_bottom_pool"
+  type: "Pooling"
+  bottom: "weights_bottom_softmax"
+  top: "weights_bottom"
+  pooling_param {
+    pool: AVE
+    kernel_size: "bottom_HW"
+    stride: 1
+  }
+}
+layer {
+  name: "weights_bottom-1"
+  type: "Power"
+  bottom: "weights_bottom"
+  top: "weights_bottom-1"
+  power_param {
+    scale: -1.0
+  }
+}
+layer {
+  name: "1-weights_bottom"
+  type: "Power"
+  bottom: "weights_bottom-1"
+  top: "1-weights_bottom"
+  power_param {
+    shift: 1.0
+  }
+}
+
+
+
+
+
+
+
+
+
