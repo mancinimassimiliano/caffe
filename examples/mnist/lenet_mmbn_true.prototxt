@@ -1,0 +1,314 @@
+# LeNetBN
+name: "LeNetBN"
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    batch_size: 64
+    backend: LMDB
+  }
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_test_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  name: "weights"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "weights"
+  param {
+    lr_mult: 0
+  }
+  param {
+    lr_mult: 0
+  }
+  inner_product_param {
+    num_output: 1
+    weight_filler {
+      type: "constant"
+      value: 0
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.5
+    }
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "ip1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 100
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "ip1"
+    bottom: "weights"
+    name: "bn11"
+    top: "bn11"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "ip1"
+    bottom: "weights"
+    name: "bn12"
+    top: "bn12"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "bn11"
+  bottom: "bn12"
+  top: "bnip1"
+  eltwise_param { operation: SUM }
+}
+layer {
+    bottom: "bnip1"
+    top: "bnip1"
+    name: "scale_bn1"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 2.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+layer {
+  name: "relu1"
+  type: "Sigmoid"
+  bottom: "bnip1"
+  top: "bnip1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "bnip1"
+  top: "ip2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 100
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "ip2"
+    bottom: "weights"
+    name: "bn21"
+    top: "bn21"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "ip2"
+    bottom: "weights"
+    name: "bn22"
+    top: "bn22"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "bn21"
+  bottom: "bn22"
+  top: "bnip2"
+  eltwise_param { operation: SUM }
+}
+
+
+layer {
+    bottom: "bnip2"
+    top: "bnip2"
+    name: "scale_bn2"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 2.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+layer {
+  name: "relu2"
+  type: "Sigmoid"
+  bottom: "bnip2"
+  top: "bnip2"
+}
+layer {
+  name: "ip3"
+  type: "InnerProduct"
+  bottom: "bnip2"
+  top: "ip3"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 100
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+
+layer {
+    bottom: "ip3"
+    bottom: "weights"
+    name: "bn31"
+    top: "bn31"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "ip3"
+    bottom: "weights"
+    name: "bn32"
+    top: "bn32"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "bn31"
+  bottom: "bn32"
+  top: "bnip3"
+  eltwise_param { operation: SUM }
+}
+
+layer {
+    bottom: "bnip3"
+    top: "bnip3"
+    name: "scale_bn3"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 2.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+layer {
+  name: "relu3"
+  type: "Sigmoid"
+  bottom: "bnip3"
+  top: "bnip3"
+}
+layer {
+  name: "ip4"
+  type: "InnerProduct"
+  bottom: "bnip3"
+  top: "ip4"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    # Since num_output is unset, DIGITS will automatically set it to the
+    #   number of classes in your dataset.
+    # Uncomment this line to set it explicitly:
+    num_output: 10
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "accuracy"
+  type: "Accuracy"
+  bottom: "ip4"
+  bottom: "label"
+  top: "accuracy"
+  include { phase: TEST }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "ip4"
+  bottom: "label"
+  top: "loss"
+}
+
+

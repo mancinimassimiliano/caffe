@@ -1,0 +1,216 @@
+name: "LeNetBN"
+layer {
+  name: "data"
+  type: "Input"
+  top: "data"
+  input_param { shape: { dim: 64 dim: 1 dim: 28 dim: 28 } }
+}
+layer {
+  # Use Power layer for input scaling
+  name: "scale"
+  bottom: "data"
+  top: "scaled"
+  type: "Power"
+  power_param {
+    # 1/(standard deviation on MNIST dataset)
+    scale: 0.0125
+  }
+}
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "scaled"
+  top: "conv1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "conv1"
+    name: "bn1"
+    top: "bn1"
+    type: "BatchNorm"
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  batch_norm_param {
+    scale_filler {
+      type: "constant"
+      value: 1
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "pool1"
+  type: "Pooling"
+  bottom: "bn1"
+  top: "pool1"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "pool1"
+  top: "conv2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 50
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "conv2"
+    name: "bn2"
+    top: "bn2"
+    type: "BatchNorm"
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  batch_norm_param {
+    scale_filler {
+      type: "constant"
+      value: 1
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "pool2"
+  type: "Pooling"
+  bottom: "bn2"
+  top: "pool2"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "pool2"
+  top: "ip1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "ip1"
+    name: "bnip1"
+    top: "bnip1"
+    type: "BatchNorm"
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  param {
+    lr_mult: 1
+    decay_mult: 0
+  }
+  batch_norm_param {
+    scale_filler {
+      type: "constant"
+      value: 1
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "bnip1"
+  top: "bnip1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "bnip1"
+  top: "ip2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    # Since num_output is unset, DIGITS will automatically set it to the
+    #   number of classes in your dataset.
+    # Uncomment this line to set it explicitly:
+    num_output: 10
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "prob"
+  type: "Softmax"
+  bottom: "ip2"
+  top: "prob"
+}
+

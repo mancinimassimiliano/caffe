@@ -1,0 +1,338 @@
+# LeNetBN
+name: "LeNetBN"
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_train_lmdb"
+    batch_size: 64
+    backend: LMDB
+  }
+}
+layer {
+  name: "mnist"
+  type: "Data"
+  top: "data"
+  top: "label"
+  include {
+    phase: TEST
+  }
+  transform_param {
+    scale: 0.00390625
+  }
+  data_param {
+    source: "examples/mnist/mnist_test_lmdb"
+    batch_size: 100
+    backend: LMDB
+  }
+}
+layer {
+  # Use Power layer for input scaling
+  name: "scale"
+  bottom: "data"
+  top: "scaled"
+  type: "Power"
+  power_param {
+    # 1/(standard deviation on MNIST dataset)
+    scale: 0.0125
+  }
+}
+layer {
+  name: "weights"
+  type: "InnerProduct"
+  bottom: "data"
+  top: "weights"
+  param {
+    lr_mult: 0
+  }
+  param {
+    lr_mult: 0
+  }
+  inner_product_param {
+    num_output: 1
+    weight_filler {
+      type: "constant"
+      value: 0
+    }
+    bias_filler {
+      type: "constant"
+      value: 0.5
+    }
+  }
+}
+layer {
+  name: "conv1"
+  type: "Convolution"
+  bottom: "scaled"
+  top: "conv1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 20
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "conv1"
+    bottom: "weights"
+    name: "bn11"
+    top: "bn11"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "conv1"
+    bottom: "weights"
+    name: "bn12"
+    top: "bn12"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "bn11"
+  bottom: "bn12"
+  top: "bn1"
+  eltwise_param { operation: SUM }
+}
+layer {
+    bottom: "bn1"
+    top: "bn1"
+    name: "scale_bn1"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 1.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+layer {
+  name: "pool1"
+  type: "Pooling"
+  bottom: "bn1"
+  top: "pool1"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "conv2"
+  type: "Convolution"
+  bottom: "pool1"
+  top: "conv2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  convolution_param {
+    num_output: 50
+    kernel_size: 5
+    stride: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "conv2"
+    bottom: "weights"
+    name: "bn21"
+    top: "bn21"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "conv2"
+    bottom: "weights"
+    name: "bn22"
+    top: "bn22"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "bn21"
+  bottom: "bn22"
+  top: "bn2"
+  eltwise_param { operation: SUM }
+}
+layer {
+    bottom: "bn2"
+    top: "bn2"
+    name: "scale_bn2"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 1.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+
+
+layer {
+  name: "pool2"
+  type: "Pooling"
+  bottom: "bn2"
+  top: "pool2"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  name: "ip1"
+  type: "InnerProduct"
+  bottom: "pool2"
+  top: "ip1"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    num_output: 500
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+    bottom: "ip1"
+    bottom: "weights"
+    name: "bnip1_11"
+    top: "bnip1_11"
+    type: "MultiModalBatchNorm"
+}
+layer {
+    bottom: "ip1"
+    bottom: "weights"
+    name: "bnip1_12"
+    top: "bnip1_12"
+    type: "MultiModalBatchNorm"
+}
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "bnip1_11"
+  bottom: "bnip1_12"
+  top: "bnip1"
+  eltwise_param { operation: SUM }
+}
+
+layer {
+    bottom: "bnip1"
+    top: "bnip1"
+    name: "scale_bnip1"
+    type: "Scale"
+    scale_param {
+        bias_term: true
+        filler {
+          value: 1.0    
+        }
+        bias_filler {
+          value: 0
+        }
+    }
+    param {
+          lr_mult: 1
+    }
+    param {
+          lr_mult: 1
+    }
+}
+layer {
+  name: "relu1"
+  type: "ReLU"
+  bottom: "bnip1"
+  top: "bnip1"
+}
+layer {
+  name: "ip2"
+  type: "InnerProduct"
+  bottom: "bnip1"
+  top: "ip2"
+  param {
+    lr_mult: 1
+  }
+  param {
+    lr_mult: 2
+  }
+  inner_product_param {
+    # Since num_output is unset, DIGITS will automatically set it to the
+    #   number of classes in your dataset.
+    # Uncomment this line to set it explicitly:
+    num_output: 10
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+    }
+  }
+}
+layer {
+  name: "accuracy"
+  type: "Accuracy"
+  bottom: "ip2"
+  bottom: "label"
+  top: "accuracy"
+  include { phase: TEST }
+}
+layer {
+  name: "loss"
+  type: "SoftmaxWithLoss"
+  bottom: "ip2"
+  bottom: "label"
+  top: "loss"
+}
+
+

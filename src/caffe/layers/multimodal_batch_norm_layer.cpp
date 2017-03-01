@@ -370,11 +370,7 @@ void MultiModalBatchNormLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& t
 
   compute_sum_per_sample_cpu(N, C, S, temp2_.cpu_diff(), temp_N_.mutable_cpu_diff());
   caffe_add(N, temp_N_.cpu_diff(), weights_diff, weights_diff);
-  int i=1;
-if (propagate_down[i]) {
-      caffe_set(bottom[i]->count(), Dtype(0),
-                bottom[i]->mutable_cpu_diff());
-    }
+  
   
   
 }

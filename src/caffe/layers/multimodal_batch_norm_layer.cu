@@ -71,22 +71,17 @@ void MultiModalBatchNormLayer<Dtype>::compute_sum_per_sample_gpu(int N, int C, i
 template <typename Dtype>
 void MultiModalBatchNormLayer<Dtype>::compute_mean_per_channel_gpu(int N, int C, int S,
     const Dtype *x, const Dtype *w, Dtype *y ) {
-  	Blob<Dtype> templ_C;
-  	vector<int> templ_size;
-  	templ_size.push_back(C);
-  	templ_C.Reshape(templ_size);
+	Dtype sw;
+      	caffe_gpu_asum(N, w, &sw);
         Blob<Dtype> app_;
   	vector<int> app_size;
   	app_size.push_back(N*C*S);
   	app_.Reshape(app_size);
-	weights_multicast_gpu(N,C,S,w,app_.mutable_gpu_data());			// W \in NCHW
-	compute_sum_per_channel_gpu(N,C,S,app_.gpu_data(),templ_C.mutable_gpu_data()); 	// sum W per channel
+	weights_multicast_gpu(N,C,S,w,app_.mutable_gpu_data());						// W \in NCHW
 	caffe_gpu_mul(N*C*S,app_.gpu_data(), x,app_.mutable_gpu_data()); 				// W*X eltwise
 	
-	caffe_gpu_powx(C, templ_C.gpu_data(), Dtype(-1.0), templ_C.mutable_gpu_data());	// 1/sumW
-	
 	compute_sum_per_channel_gpu(N,C,S,app_.gpu_data(),y);				//sumWX
-	caffe_gpu_mul(C, y, templ_C.gpu_data(), y);						//scale sumWX/sumW
+	caffe_gpu_scale(C, Dtype(1.0/(sw*S)), y,y);
 }
 
 
@@ -199,6 +194,9 @@ void MultiModalBatchNormLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& t
   const Dtype* weights = bottom[1]->gpu_data();
   const Dtype* top_diff = top[0]->gpu_diff();
 
+   Dtype sw;
+   caffe_gpu_asum(N, weights, &sw);
+
   // --  STAGE 1: backprop dE/d(x_norm) = dE/dY .* w ------------
   weights_multicast_gpu(N, C, S, weights, temp_.mutable_gpu_data());
   caffe_gpu_mul(top_size, top_diff, temp_.gpu_data(), x_norm_.mutable_gpu_diff());
@@ -219,21 +217,35 @@ void MultiModalBatchNormLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& t
   Dtype* bottom_diff = bottom[0]->mutable_gpu_diff();
   Dtype* weights_diff = bottom[1]->mutable_gpu_diff();
 
+
+
+  caffe_gpu_mul(top_size, top_data, top_data, temp2_.mutable_gpu_diff());				// Y^2
+  caffe_gpu_add_scalar(top_size, Dtype(-1.0), temp2_.mutable_gpu_diff());				// -(1-Y^2)
+
   // temp = sum(dE/dY .* Y)
   caffe_gpu_mul(top_size, top_diff, top_data, temp_.mutable_gpu_diff());
   compute_sum_per_channel_gpu(N, C, S, temp_.gpu_diff(),
       temp_C_.mutable_gpu_diff());
   multicast_gpu(N, C, S, temp_C_.gpu_diff(), temp_.mutable_gpu_diff());
 
+   
+  caffe_gpu_mul(top_size, temp_.gpu_diff(), temp2_.gpu_diff(), temp2_.mutable_gpu_diff());		// temp2 = -(1-Y^2).*sum(dE/dY.*Y)
+
   // bottom = sum(dE/dY .* Y) .* Y
   caffe_gpu_mul(top_size, temp_.gpu_diff(), top_data, bottom_diff);
+
+  
 
   // temp = sum(dE/dY)
   compute_sum_per_channel_gpu(N, C, S, top_diff, temp_C_.mutable_gpu_diff());
   multicast_gpu(N, C, S, temp_C_.gpu_diff(), temp_.mutable_gpu_diff());
-
+  
   // bottom = (sum(dE/dY) + sum(dE/dY .* Y) .* Y)*w
   caffe_gpu_add(top_size, temp_.gpu_diff(), bottom_diff, bottom_diff);
+
+  caffe_gpu_mul(top_size, temp_.gpu_diff(), top_data, temp_.mutable_gpu_diff());
+  caffe_gpu_axpby(top_size, Dtype(-1.), temp_.gpu_diff(), Dtype(-0.5), temp2_.mutable_gpu_diff());
+  caffe_gpu_scale(top_size, Dtype(1.0/(sw*S)), temp2_.gpu_diff(),temp2_.mutable_gpu_diff());
 
   weights_multicast_gpu(N, C, S, weights, temp_.mutable_gpu_data());
   compute_sum_per_channel_gpu(N,C,S,temp_.gpu_data(),temp_C_.mutable_gpu_data()); 
@@ -260,46 +272,31 @@ void MultiModalBatchNormLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& t
   // temp = mean(dE/dY .* Y)
  // 1
   caffe_gpu_mul(top_size, top[0]->gpu_diff(), top_data, temp_.mutable_gpu_diff());
-  compute_sum_per_sample_gpu(N, C, S, temp_.gpu_diff(), weights_diff);
+  caffe_gpu_add(top_size, temp_.gpu_diff(), temp2_.gpu_diff(), temp2_.mutable_gpu_diff());
 
-  // temp = mean(dE/dY .* Y)
-  caffe_gpu_mul(top_size, top_diff, top_data, temp_.mutable_gpu_diff()); 				// dE/dY .* Y
+  compute_sum_per_sample_gpu(N, C, S, temp2_.gpu_diff(), weights_diff);
+
+  /*// temp = mean(dE/dY .* Y)
+  caffe_gpu_mul(top_size, top_diff, top_data, temp_.mutable_gpu_diff()); 			// dE/dY .* Y
   compute_sum_per_channel_gpu(N, C, S, temp_.gpu_diff(), temp_C_.mutable_gpu_diff());   	// sum(dE/dY .* Y)
   multicast_gpu(N, C, S, temp_C_.gpu_diff(), temp_.mutable_gpu_diff());				// sum repeated
-
+*/
   // bottom_w = -0.5*sum(dE/dY .* Y) .* Y^2
 
-  caffe_gpu_mul(top_size, top_data, top_data, temp2_.mutable_gpu_diff());				// Y^2
-  caffe_gpu_add_scalar(top_size, Dtype(-1.0), temp2_.mutable_gpu_diff());				// -(1-Y^2)
-  caffe_gpu_mul(top_size, temp_.gpu_diff(), temp2_.gpu_diff(), temp2_.mutable_gpu_diff());		// temp2 = -(1-Y^2).*sum(dE/dY.*Y)
-
-  
-
-  compute_sum_per_channel_gpu(N, C, S, top_diff, temp_C_.mutable_gpu_diff()); 			// temp = sum(dE/dY)
-  multicast_gpu(N, C, S, temp_C_.gpu_diff(), temp_.mutable_gpu_diff());				// Repeated
-  
-
-  caffe_gpu_mul(top_size, temp_.gpu_diff(), top_data, temp_.mutable_gpu_diff());			// temp = Y.*sum(dE/dY)
-  caffe_gpu_axpby(top_size, Dtype(-1.), temp_.gpu_diff(), Dtype(-0.5), temp2_.mutable_gpu_diff()); // -Y/sw.*sum(dE/dY) + 1/(2*sw).*(1-Y^2).*sum(dE/dY.*Y)
 
  
-  weights_multicast_gpu(N, C, S, weights, temp_.mutable_gpu_data());
+  /*/weights_multicast_gpu(N, C, S, weights, temp_.mutable_gpu_data());
   compute_sum_per_channel_gpu(N,C,S,temp_.gpu_data(),temp_C_.mutable_gpu_data()); 
-  caffe_gpu_powx(C, temp_C_.gpu_data(), Dtype(-1.0),
-      temp_C_.mutable_gpu_data()); // std = (var+eps)^(-0.5)
+  caffe_gpu_powx(C, temp_C_.gpu_data(), Dtype(-1.0), 
+temp_C_.mutable_gpu_data()); // std = (var+eps)^(-0.5)
   multicast_gpu(N, C, S, temp_C_.gpu_data(), temp_.mutable_gpu_data());         
   caffe_gpu_mul(top_size, temp2_.gpu_diff(), temp_.gpu_data(), temp2_.mutable_gpu_diff());
-
-
+*/
+/*
 
   compute_sum_per_sample_gpu(N, C, S, temp2_.gpu_diff(), temp_N_.mutable_gpu_diff());
-  caffe_gpu_add(N, temp_N_.gpu_diff(), weights_diff, weights_diff);
+  caffe_gpu_add(N, temp_N_.gpu_diff(), weights_diff, weights_diff);*/
 
-   int i=1;
-if (propagate_down[i]) {
-      caffe_set(bottom[i]->count(), Dtype(0),
-                bottom[i]->mutable_gpu_diff());
-    }
 }
 
 
