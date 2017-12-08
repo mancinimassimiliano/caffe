@@ -40,7 +40,10 @@ With the second bottom "weights", being a vector of dimension Nx1, where N is th
     }
 
 
-An extended example can be found in core_modules.txt
+An extended example can be found in core_modules.txt.
+
+
+--------------------------------------------------------------------------------------------------------------------------------
 
 
 # Caffe
