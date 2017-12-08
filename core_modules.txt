@@ -1,4 +1,4 @@
-# **WEIGHTS_GENERATION (example)**
+# WEIGHTS_GENERATION (example)
 
 layer {
   name: "w_relu"
@@ -67,7 +67,7 @@ layer {
 
 
 
-# **CORE MODULE**
+# CORE MODULE
 
 layer {
     name: "wbn1"
