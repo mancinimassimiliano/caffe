@@ -1,145 +1,106 @@
-CORE MODULE
+# **WEIGHTS_GENERATION (example)**
 
 layer {
-    bottom: "bottom"
-    bottom: "weights"
-    name: "mmbn1"
-    top: "mmbn1"
-    type: "MultiModalBatchNorm"
-}
-layer {
-    bottom: "bottom"
-    bottom: "1-weights"
-    name: "mmbn2"
-    top: "mmbn2"
-    type: "MultiModalBatchNorm"
-}
-layer {
-  name: "eltwise-sum"
-  type: "Eltwise"
-  bottom: "mmbn1"
-  bottom: "mmbn2"
-  top: "mmbn"
-  eltwise_param { operation: SUM }
-}
-layer {
-    bottom: "mmbn"
-    top: "mmbn"
-    name: "scale_mmbn"
-    type: "Scale"
-    scale_param {
-        bias_term: true
-        filler {
-          value: 1.0    
-        }
-        bias_filler {
-          value: 0
-        }
-    }
-    param {
-          lr_mult: 1
-    }
-    param {
-          lr_mult: 1
-    }
+  name: "w_relu"
+  type: "ReLU"
+  bottom: "input"
+  top: "w_relu"
 }
 
-
-
-
-
-WEIGHTS_GENERATION
-
 layer {
-  name: "weights_bottom_1x1"
-  type: "Convolution"
-  bottom: "bottom"
-  top: "weights_bottom_1x1"
+  name: "w_pool"
+  type: "Pooling"
+  bottom: "w_relu"
+  top: "w_pool"
+  pooling_param {
+    pool: AVE
+    global_pooling: true
+  }
+}
+layer {
+  name: "w_score"
+  type: "InnerProduct"
+  bottom: "w_pool"
+  top: "w_score"
   param {
     lr_mult: 1
+    decay_mult: 1
   }
   param {
     lr_mult: 2
+    decay_mult: 0
   }
-  convolution_param {
-    num_output: 1
-    kernel_size: 1
-    stride: 1
+  inner_product_param {
+    num_output: 3  # NUMBER OF DOMAINS
     weight_filler {
       type: "gaussian"
       std: 0.01
     }
     bias_filler {
       type: "constant"
+      value: 0
     }
   }
 }
 layer {
-    bottom: "weights_bottom_1x1"
-    top: "weights_bottom_scale"
-    name: "weights_bottom_scale"
-    type: "Scale"
-    scale_param {
-        bias_term: true
-        filler {
-          value: 1.0    
-        }
-        bias_filler {
-          value: 0.5
-        }
-    }
-    param {
-          lr_mult: 0
-	  decay_mult: 0
-    }
-    param {
-          lr_mult: 0
-	  decay_mult: 0
-    }
-}
-
-layer {
-  name: "weights_bottom_softmax"
+  name: "w_soft"
   type: "Softmax"
-  bottom: "weights_bottom_scale"
-  top: "weights_bottom_softmax"
-  include { stage: "deploy" }
-}
-layer {
-  name: "weights_bottom_pool"
-  type: "Pooling"
-  bottom: "weights_bottom_softmax"
-  top: "weights_bottom"
-  pooling_param {
-    pool: AVE
-    kernel_size: "bottom_HW"
-    stride: 1
-  }
-}
-layer {
-  name: "weights_bottom-1"
-  type: "Power"
-  bottom: "weights_bottom"
-  top: "weights_bottom-1"
-  power_param {
-    scale: -1.0
-  }
-}
-layer {
-  name: "1-weights_bottom"
-  type: "Power"
-  bottom: "weights_bottom-1"
-  top: "1-weights_bottom"
-  power_param {
-    shift: 1.0
+  bottom: "w_score"
+  top: "w_soft"
+  softmax_param {
+    axis: 1
   }
 }
 
+layer {
+  name: "w_slicer"
+  type: "Slice"
+  bottom: "w_pow"
+  top: "weights_1"
+  top: "weights_2"
+  top: "weights_3"
+  slice_param {
+    axis: 1
+  }
+  
+}
 
 
 
+# **CORE MODULE**
 
+layer {
+    name: "wbn1"
+    bottom: "bottom"
+    bottom: "weights_1"
+    top: "wbn1"
+    type: "MultiModalBatchNorm"
+}
 
+layer {
+    name: "wbn2"
+    bottom: "bottom"
+    bottom: "weights_2"
+    top: "wbn2"
+    type: "MultiModalBatchNorm"
+}
 
+layer {
+    name: "wbn3"
+    bottom: "bottom"
+    bottom: "weights_3"
+    top: "wbn3"
+    type: "MultiModalBatchNorm"
+}
 
-
+layer {
+  name: "eltwise-sum"
+  type: "Eltwise"
+  bottom: "wbn1"
+  bottom: "wbn2"
+  bottom: "wbn3"
+  top: "wbn"
+  eltwise_param { 
+  	operation: SUM 
+  }
+}
