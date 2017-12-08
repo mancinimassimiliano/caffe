@@ -1,5 +1,4 @@
-#This is the Caffe version used in the work **_"Robust Place Categorization with
-Deep Domain Generalization"_**.
+This is the Caffe version used in the work **_"Robust Place Categorization with Deep Domain Generalization"_**.
 
 This code allows to use Weighted Batch-Normalizaton layers. To add a weighted batch-norm use the following definition in the prototxt:
 
