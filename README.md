@@ -1,3 +1,49 @@
+This is the Caffe version used in the work "Robust Place Categorization with
+Deep Domain Generalization".
+
+This code allows to use Weighted Batch-Normalizaton layers. To add a weighted batch-norm use the following definition in the prototxt:
+
+
+    layer{
+        type: "MultiModalBatchNorm"
+        bottom: "input"
+        bottom: "weights"
+        top: "output"
+    }
+
+
+
+
+With the second bottom "weights", being a vector of dimension Nx1, where N is the batch-size. Note that there must be 1 layer per per domain, with the weights already given as probabilities, and their output should be summed as in: 
+
+    layer{
+        type: "MultiModalBatchNorm"
+        bottom: "input_1"
+        bottom: "weights_1"
+        top: "output_1"
+    }
+
+    layer{
+        type: "MultiModalBatchNorm"
+        bottom: "input_2"
+        bottom: "weights_2"
+        top: "output_2"
+    }
+
+    layer{
+        type: "Eltwise"
+        bottom: "output_1"
+        bottom: "output_2"
+        top: "output"
+        eltwise_param{
+            operation: SUM
+        }
+    }
+
+
+An extended example can be found in core_modules.txt
+
+
 # Caffe
 
 
