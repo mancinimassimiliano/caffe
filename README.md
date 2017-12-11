@@ -4,6 +4,7 @@ This code allows to use Weighted Batch-Normalizaton layers. To add a weighted ba
 
 
     layer{
+        name: "wbn"
         type: "MultiModalBatchNorm"
         bottom: "input"
         bottom: "weights"
@@ -16,6 +17,7 @@ This code allows to use Weighted Batch-Normalizaton layers. To add a weighted ba
 With the second bottom "weights", being a vector of dimension Nx1, where N is the batch-size. Note that there must be 1 layer per per domain, with the weights already given as probabilities, and their output should be summed as in: 
 
     layer{
+        name: "wbn1"
         type: "MultiModalBatchNorm"
         bottom: "input_1"
         bottom: "weights_1"
@@ -23,6 +25,7 @@ With the second bottom "weights", being a vector of dimension Nx1, where N is th
     }
 
     layer{
+        name: "wbn2"
         type: "MultiModalBatchNorm"
         bottom: "input_2"
         bottom: "weights_2"
@@ -30,6 +33,7 @@ With the second bottom "weights", being a vector of dimension Nx1, where N is th
     }
 
     layer{
+        name: "wbn"
         type: "Eltwise"
         bottom: "output_1"
         bottom: "output_2"
