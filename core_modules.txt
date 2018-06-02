@@ -55,7 +55,7 @@ layer {
 layer {
   name: "w_slicer"
   type: "Slice"
-  bottom: "w_pow"
+  bottom: "w_soft"
   top: "weights_1"
   top: "weights_2"
   top: "weights_3"

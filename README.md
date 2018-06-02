@@ -1,4 +1,6 @@
-This is the Caffe version used in the work **_"Robust Place Categorization with Deep Domain Generalization"_**.
+This is the Caffe version used in the work [Robust Place Categorization with Deep Domain Generalization](https://ieeexplore.ieee.org/document/8302933/). 
+
+This code is forked from [NVIDIA/caffe](https://github.com/NVIDIA/caffe). For any issue not directly related to our additional layer (MultiModalBatchNorm), please refer to the upstream repository.
 
 This code allows to use Weighted Batch-Normalizaton layers. To add a weighted batch-norm use the following definition in the prototxt:
 
@@ -14,7 +16,7 @@ This code allows to use Weighted Batch-Normalizaton layers. To add a weighted ba
 
 
 
-With the second bottom "weights", being a vector of dimension Nx1, where N is the batch-size. Note that there must be 1 layer per per domain, with the weights already given as probabilities, and their output should be summed as in: 
+With the second bottom "weights", being a vector of dimension Nx1, where N is the batch-size. Note that there must be 1 layer per domain, with the weights already given as probabilities, and their output should be summed as in: 
 
     layer{
         name: "wbn1"
@@ -47,41 +49,20 @@ With the second bottom "weights", being a vector of dimension Nx1, where N is th
 An extended example can be found in core_modules.txt.
 
 
---------------------------------------------------------------------------------------------------------------------------------
+## Abstract and citation
 
+Traditional place categorization approaches in robot vision assume that training and test images have similar visual appearance. Therefore, any seasonal, illumination, and environmental changes typically lead to severe degradation in performance. To cope with this problem, recent works have been proposed to adopt domain adaptation techniques. While effective, these methods assume that some prior information about the scenario where the robot will operate is available at training time. Unfortunately, in many cases, this assumption does not hold, as we often do not know where a robot will be deployed. To overcome this issue, in this paper, we present an approach that aims at learning classification models able to generalize to unseen scenarios. Specifically, we propose a novel deep learning framework for domain generalization. Our method develops from the intuition that, given a set of different classification models associated to known domains (e.g., corresponding to multiple environments, robots), the best model for a new sample in the novel domain can be computed directly at test time by optimally combining the known models. To implement our idea, we exploit recent advances in deep domain adaptation and design a convolutional neural network architecture with novel layers performing a weighted version of batch normalization. Our experiments, conducted on three common datasets for robot place categorization, confirm the validity of our contribution.
 
-# Caffe
-
-
-Caffe is a deep learning framework made with expression, speed, and modularity in mind.
-It is developed by the Berkeley Vision and Learning Center ([BVLC](http://bvlc.eecs.berkeley.edu)) and community contributors.
-
-Check out the [project site](http://caffe.berkeleyvision.org) for all the details like
-
-- [DIY Deep Learning for Vision with Caffe](https://docs.google.com/presentation/d/1UeKXVgRvvxg9OUdh_UiC5G71UMscNPlvArsWER41PsU/edit#slide=id.p)
-- [Tutorial Documentation](http://caffe.berkeleyvision.org/tutorial/)
-- [BVLC reference models](http://caffe.berkeleyvision.org/model_zoo.html) and the [community model zoo](https://github.com/BVLC/caffe/wiki/Model-Zoo)
-- [Installation instructions](http://caffe.berkeleyvision.org/installation.html)
-
-and step-by-step examples.
-
-[![Join the chat at https://gitter.im/BVLC/caffe](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/BVLC/caffe?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-
-Please join the [caffe-users group](https://groups.google.com/forum/#!forum/caffe-users) or [gitter chat](https://gitter.im/BVLC/caffe) to ask questions and talk about methods and models.
-Framework development discussions and thorough bug reports are collected on [Issues](https://github.com/BVLC/caffe/issues).
-
-Happy brewing!
-
-## License and Citation
-
-Caffe is released under the [BSD 2-Clause license](https://github.com/BVLC/caffe/blob/master/LICENSE).
-The BVLC reference models are released for unrestricted use.
-
-Please cite Caffe in your publications if it helps your research:
-
-    @article{jia2014caffe,
-      Author = {Jia, Yangqing and Shelhamer, Evan and Donahue, Jeff and Karayev, Sergey and Long, Jonathan and Girshick, Ross and Guadarrama, Sergio and Darrell, Trevor},
-      Journal = {arXiv preprint arXiv:1408.5093},
-      Title = {Caffe: Convolutional Architecture for Fast Feature Embedding},
-      Year = {2014}
+    @article{mancini2018robust,
+      title={Robust Place Categorization With Deep Domain Generalization},
+      author={Mancini, Massimiliano and Rota Bul{\`o}, Samuel and Caputo, Barbara and Ricci, Elisa},
+      journal={IEEE Robotics and Automation Letters},
+      year={2018},
+      volume={3},
+      number={3},
+      pages={2093-2100},
+      doi={10.1109/LRA.2018.2809700},
+      month={July},
     }
+
+
